@@ -35,6 +35,8 @@ export const AvatarModel = () => {
   const rightArmRef = useRef<THREE.Object3D | null>(null);
   const leftForearmRef = useRef<THREE.Object3D | null>(null);
   const rightForearmRef = useRef<THREE.Object3D | null>(null);
+  const headRef = useRef<THREE.Object3D | null>(null);
+  const spineRef = useRef<THREE.Object3D | null>(null);
   const baseRotations = useRef(new Map<string, THREE.Euler>());
   const dragState = useRef({ active: false, lastX: 0, lastY: 0 });
 
@@ -49,6 +51,8 @@ export const AvatarModel = () => {
     rightArmRef.current = null;
     leftForearmRef.current = null;
     rightForearmRef.current = null;
+    headRef.current = null;
+    spineRef.current = null;
 
     scene.traverse((child) => {
       if (child.type !== "Bone") {
@@ -67,6 +71,12 @@ export const AvatarModel = () => {
       }
       if (name.includes("rightforearm") || name.includes("rightlowerarm") || name.includes("r_lowerarm")) {
         rightForearmRef.current = child;
+      }
+      if (name === "head" || name.includes("head")) {
+        headRef.current = child;
+      }
+      if (name === "spine" || name === "spine2" || name.includes("neck")) {
+        spineRef.current = child;
       }
     });
 
@@ -116,6 +126,8 @@ export const AvatarModel = () => {
     resetBone(rightArmRef.current);
     resetBone(leftForearmRef.current);
     resetBone(rightForearmRef.current);
+    resetBone(headRef.current);
+    resetBone(spineRef.current);
   };
 
   useEffect(() => {
@@ -175,8 +187,49 @@ export const AvatarModel = () => {
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
     if (groupRef.current) {
+      // Base idle sway
       groupRef.current.rotation.y = Math.sin(t * 0.2) * 0.08;
       groupRef.current.position.y = Math.sin(t * 0.6) * 0.02;
+    }
+
+    // Procedural gestures based on audio amplitude
+    if (headRef.current) {
+      const baseHead = baseRotations.current.get(headRef.current.name);
+      if (baseHead) {
+        // Nod and tilt head slightly when speaking, and a tiny bit when idle
+        const isSpeaking = amplitude > 0.05;
+        const nod = Math.sin(t * (isSpeaking ? 5 : 2)) * (isSpeaking ? amplitude * 0.3 : 0.02);
+        const tilt = Math.cos(t * (isSpeaking ? 3 : 1.5)) * (isSpeaking ? amplitude * 0.2 : 0.01);
+        headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, baseHead.x + nod, 0.1);
+        headRef.current.rotation.z = THREE.MathUtils.lerp(headRef.current.rotation.z, baseHead.z + tilt, 0.1);
+      }
+    }
+
+    if (spineRef.current) {
+      const baseSpine = baseRotations.current.get(spineRef.current.name);
+      if (baseSpine) {
+        // Subtle spine breathing/sway
+        const sway = Math.sin(t * 1.5) * 0.02;
+        spineRef.current.rotation.z = THREE.MathUtils.lerp(spineRef.current.rotation.z, baseSpine.z + sway, 0.1);
+      }
+    }
+
+    // Arm gestures when speaking
+    if (rightArmRef.current && rightForearmRef.current && !dragState.current.active) {
+      const baseRA = baseRotations.current.get(rightArmRef.current.name);
+      const baseRFA = baseRotations.current.get(rightForearmRef.current.name);
+      if (baseRA && baseRFA) {
+         // Smoothly raise arm into a gesture if speaking, otherwise return to base
+         const isSpeaking = amplitude > 0.05;
+         // Generate a slow, organic wave for the gesture height
+         const gestureWave = Math.sin(t * 2) * 0.4;
+         // The target rotation is higher up when speaking
+         const targetRAx = isSpeaking ? baseRA.x + 0.6 + gestureWave : baseRA.x;
+         const targetRFAx = isSpeaking ? baseRFA.x - 0.8 + gestureWave * 0.5 : baseRFA.x;
+         
+         rightArmRef.current.rotation.x = THREE.MathUtils.lerp(rightArmRef.current.rotation.x, targetRAx, 0.05);
+         rightForearmRef.current.rotation.x = THREE.MathUtils.lerp(rightForearmRef.current.rotation.x, targetRFAx, 0.05);
+      }
     }
 
     // Reduce amplitude and cap max values to simulate a small, murmuring lip movement
