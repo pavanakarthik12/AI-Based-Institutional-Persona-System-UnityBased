@@ -75,6 +75,12 @@ export const useMicrophoneStream = ({
       return;
     }
     try {
+      if (typeof window !== "undefined" && !window.isSecureContext) {
+        setListening(false);
+        setMicPermission("denied");
+        setMicError("Microphone requires HTTPS or localhost.");
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       setMicPermission("granted");

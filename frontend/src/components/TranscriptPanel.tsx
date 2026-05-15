@@ -5,6 +5,7 @@ import { useAppStore } from "@/store/useAppStore";
 
 export const TranscriptPanel = () => {
   const transcript = useAppStore((state) => state.transcript);
+  const micError = useAppStore((state) => state.micError);
 
   return (
     <section className="transcript">
@@ -27,6 +28,11 @@ export const TranscriptPanel = () => {
         {transcript.length === 0 ? (
           <div className="transcript-line">
             <strong>System:</strong> Waiting for the first message...
+          </div>
+        ) : null}
+        {micError ? (
+          <div className="transcript-line">
+            <strong>System:</strong> {micError}
           </div>
         ) : null}
       </div>
