@@ -1,8 +1,8 @@
 "use client";
 
-import { useGLTF } from "@react-three/drei";
+import { useAnimations, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useAudioStore } from "@/store/useAudioStore";
 import { useAppStore } from "@/store/useAppStore";
@@ -26,10 +26,53 @@ export const AvatarModel = () => {
   const groupRef = useRef<THREE.Group>(null);
   const modelUrl =
     process.env.NEXT_PUBLIC_AVATAR_MODEL || "/avatars/avaturn.glb";
-  const { scene } = useGLTF(modelUrl);
+  const { scene, animations } = useGLTF(modelUrl);
+  const { actions } = useAnimations(animations, groupRef);
   const amplitude = useAudioStore((state) => state.amplitude);
   const viseme = useAppStore((state) => state.viseme);
   const blink = useBlink();
+
+  useEffect(() => {
+    if (animations.length > 0) {
+      const first = animations[0].name;
+      actions[first]?.reset().fadeIn(0.4).play();
+      return;
+    }
+
+    const lowerArms = (bone: THREE.Object3D) => {
+      const name = bone.name.toLowerCase();
+      const rot = bone.rotation;
+
+      if (name.includes("leftarm") || name.includes("leftupperarm") || name.includes("l_upperarm")) {
+        rot.z = THREE.MathUtils.degToRad(10);
+        rot.x = THREE.MathUtils.degToRad(-35);
+      }
+      if (name.includes("rightarm") || name.includes("rightupperarm") || name.includes("r_upperarm")) {
+        rot.z = THREE.MathUtils.degToRad(-10);
+        rot.x = THREE.MathUtils.degToRad(-35);
+      }
+      if (name.includes("leftforearm") || name.includes("leftlowerarm") || name.includes("l_lowerarm")) {
+        rot.x = THREE.MathUtils.degToRad(-10);
+        rot.y = THREE.MathUtils.degToRad(5);
+      }
+      if (name.includes("rightforearm") || name.includes("rightlowerarm") || name.includes("r_lowerarm")) {
+        rot.x = THREE.MathUtils.degToRad(-10);
+        rot.y = THREE.MathUtils.degToRad(-5);
+      }
+      if (name.includes("shoulder") && name.includes("left")) {
+        rot.z = THREE.MathUtils.degToRad(6);
+      }
+      if (name.includes("shoulder") && name.includes("right")) {
+        rot.z = THREE.MathUtils.degToRad(-6);
+      }
+    };
+
+    scene.traverse((child) => {
+      if (child.type === "Bone") {
+        lowerArms(child);
+      }
+    });
+  }, [actions, animations, scene]);
 
   const morphMeshes = useMemo(() => {
     const meshes: THREE.Mesh[] = [];
