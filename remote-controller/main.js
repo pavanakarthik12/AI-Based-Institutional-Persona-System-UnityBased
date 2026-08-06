@@ -306,9 +306,9 @@ function escapeHtml(text) {
 // Microphone
 // ============================================================================
 
-const CHUNK_MS = 500;
-const MIN_RECORDING_SECONDS = 0.55;
-const MIN_RMS = 0.012;
+const CHUNK_MS = 500; // 500ms chunk size - balanced for streaming efficiency
+const MIN_RECORDING_SECONDS = 0.55; // Informational threshold, not blocking
+const MIN_RMS = 0.012; // Informational threshold, not blocking
 
 function pickMimeType() {
   const candidates = [
@@ -416,22 +416,23 @@ async function startRecording() {
     };
     
     recorder.onstop = async () => {
-      // Quick validation: check if audio is too short/quiet
+      // Commit immediately for fastest response, then validate in parallel
       if (state.sentAnyAudio) {
-        const recording = new Blob(state.chunks, { type: mimeType || contentType });
-        const analysis = await analyzeAudio(recording);
+        // Send commit right away - don't wait for validation
+        sendJson({ type: 'stt_commit' });
+        hideMicError();
         
-        if (analysis && (analysis.duration < MIN_RECORDING_SECONDS || analysis.rms < MIN_RMS)) {
-          // Audio too short/quiet - cancel
-          sendJson({ type: 'stt_cancel' });
-          showMicError('Could not hear clearly. Hold the button and speak longer.');
-          state.micState = 'idle';
-          updateTalkButtonLabel();
-        } else {
-          // Audio valid - commit immediately (already set to processing in stopRecording)
-          hideMicError();
-          sendJson({ type: 'stt_commit' });
-        }
+        // Validate audio quality in background (for future improvements/logging)
+        const recording = new Blob(state.chunks, { type: mimeType || contentType });
+        analyzeAudio(recording).then(analysis => {
+          // If audio was too short/quiet, we've already committed - backend will handle it
+          // This analysis is now informational only, doesn't block the response
+          if (analysis && (analysis.duration < MIN_RECORDING_SECONDS || analysis.rms < MIN_RMS)) {
+            console.warn('[Audio] Quality below threshold:', analysis);
+          }
+        }).catch(() => {
+          // Analysis failure doesn't affect the already-sent commit
+        });
       } else {
         sendJson({ type: 'stt_cancel' });
         showMicError('No audio captured from microphone.');

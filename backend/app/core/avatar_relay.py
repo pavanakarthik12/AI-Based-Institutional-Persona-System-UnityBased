@@ -22,6 +22,11 @@ class _Relay:
     def register_display(self, websocket: object) -> None:
         """Called when an avatar /ws client connects."""
         self._displays.add(websocket)
+        # Notify the newly connected display of current remote status
+        if self._remotes:
+            payload = {"type": "remote_status", "connected": True, "count": len(self._remotes)}
+            import asyncio
+            asyncio.create_task(self._send_to_display(websocket, payload))
 
     def unregister_display(self, websocket: object) -> None:
         """Called when an avatar /ws client goes away."""
@@ -45,6 +50,14 @@ class _Relay:
         logger.info(f"Remote disconnected. Total remotes: {len(self._remotes)}")
         import asyncio
         asyncio.create_task(self.push_to_displays(payload))
+
+    async def _send_to_display(self, websocket: object, payload: dict) -> None:
+        """Send a message to a single display."""
+        text = json.dumps(payload)
+        try:
+            await websocket.send_text(text)  # type: ignore[attr-defined]
+        except Exception:
+            self.unregister_display(websocket)
 
     async def push_to_displays(self, payload: dict) -> None:
         """Send one message to every connected avatar, dropping the dead ones."""
