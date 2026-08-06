@@ -41,6 +41,7 @@ async def remote_websocket_endpoint(
     pipeline: AvatarPipeline = Depends(get_pipeline),
 ) -> None:
     await websocket.accept()
+    relay.register_remote(websocket)  # Track this remote connection
     audio_buffer = bytearray()
     audio_meta = _default_audio_meta()
     current_language: str = "auto"
@@ -207,12 +208,15 @@ async def remote_websocket_endpoint(
             await send_json({"type": "error", "message": "Unknown message type."})
 
     except WebSocketDisconnect:
+        relay.unregister_remote(websocket)  # Untrack on disconnect
         return
     except RuntimeError:
         # Normal hangup: receive() after the peer went away.
+        relay.unregister_remote(websocket)  # Untrack on hangup
         return
     except Exception as exc:
         logger.exception("remote websocket failed")
+        relay.unregister_remote(websocket)  # Untrack on error
         try:
             await send_json({"type": "error", "message": str(exc)})
         except RuntimeError:

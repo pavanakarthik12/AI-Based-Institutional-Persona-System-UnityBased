@@ -17,10 +17,13 @@ type SocketMessage = {
   gesture?: string;
   message?: string;
   state?: string;
+  connected?: boolean;
+  count?: number;
 };
 
 export const useAvatarSocket = () => {
   const setConnectionStatus = useAppStore((state) => state.setConnectionStatus);
+  const setRemoteConnected = useAppStore((state) => state.setRemoteConnected);
   const addTranscript = useAppStore((state) => state.addTranscript);
   const setMicState = useAppStore((state) => state.setMicState);
   const setMicError = useAppStore((state) => state.setMicError);
@@ -63,6 +66,11 @@ export const useAvatarSocket = () => {
           setAvatarHints(data.emotion, data.gesture);
           break;
 
+        case "remote_status":
+          // Update remote connection status from relay
+          setRemoteConnected(data.connected ?? false);
+          break;
+
         case "stt_status":
           if (data.state === "recording") {
             setMicState("recording");
@@ -93,7 +101,7 @@ export const useAvatarSocket = () => {
       unsubscribeMessage();
       release();
     };
-  }, [addTranscript, setAvatarHints, setConnectionStatus, setMicError, setMicState]);
+  }, [addTranscript, setAvatarHints, setConnectionStatus, setMicError, setMicState, setRemoteConnected]);
 
   const sendMessage = (payload: Record<string, unknown>) => getSocketManager().sendJson(payload);
   const sendBinary = (payload: Blob) => getSocketManager().sendBinaryIfOpen(payload);

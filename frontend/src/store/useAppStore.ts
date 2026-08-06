@@ -33,6 +33,7 @@ type MicState =
 
 type AppState = {
   connectionStatus: ConnectionStatus;
+  remoteConnected: boolean;
   transcript: TranscriptEntry[];
   input: string;
   listening: boolean;
@@ -46,6 +47,7 @@ type AppState = {
   gesture: string;
   language: string;
   setConnectionStatus: (status: ConnectionStatus) => void;
+  setRemoteConnected: (connected: boolean) => void;
   addTranscript: (entry: Omit<TranscriptEntry, "id" | "timestamp">) => void;
   setInput: (value: string) => void;
   setListening: (value: boolean) => void;
@@ -64,6 +66,7 @@ const makeId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export const useAppStore = create<AppState>((set) => ({
   connectionStatus: "connecting",
+  remoteConnected: false,
   transcript: [],
   input: "",
   listening: false,
@@ -77,6 +80,7 @@ export const useAppStore = create<AppState>((set) => ({
   gesture: "idle",
   language: "en",
   setConnectionStatus: (status) => set({ connectionStatus: status }),
+  setRemoteConnected: (connected) => set({ remoteConnected: connected }),
   addTranscript: (entry) =>
     set((state) => {
       const next = [

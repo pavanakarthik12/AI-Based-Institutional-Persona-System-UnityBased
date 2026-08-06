@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class _Relay:
     def __init__(self) -> None:
         self._displays: set[object] = set()
+        self._remotes: set[object] = set()
 
     def register_display(self, websocket: object) -> None:
         """Called when an avatar /ws client connects."""
@@ -25,6 +26,25 @@ class _Relay:
     def unregister_display(self, websocket: object) -> None:
         """Called when an avatar /ws client goes away."""
         self._displays.discard(websocket)
+
+    def register_remote(self, websocket: object) -> None:
+        """Called when a remote /ws/remote client connects."""
+        self._remotes.add(websocket)
+        # Notify all displays that a remote connected
+        payload = {"type": "remote_status", "connected": True, "count": len(self._remotes)}
+        logger.info(f"Remote connected. Total remotes: {len(self._remotes)}")
+        # Use asyncio to push without blocking
+        import asyncio
+        asyncio.create_task(self.push_to_displays(payload))
+
+    def unregister_remote(self, websocket: object) -> None:
+        """Called when a remote /ws/remote client goes away."""
+        self._remotes.discard(websocket)
+        # Notify all displays that a remote disconnected
+        payload = {"type": "remote_status", "connected": len(self._remotes) > 0, "count": len(self._remotes)}
+        logger.info(f"Remote disconnected. Total remotes: {len(self._remotes)}")
+        import asyncio
+        asyncio.create_task(self.push_to_displays(payload))
 
     async def push_to_displays(self, payload: dict) -> None:
         """Send one message to every connected avatar, dropping the dead ones."""

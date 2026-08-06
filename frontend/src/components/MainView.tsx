@@ -5,6 +5,7 @@ import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { ControlsBar } from "@/components/ControlsBar";
 import { PersonaSwitcher } from "@/components/PersonaSwitcher";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
+import { RemoteStatus } from "@/components/RemoteStatus";
 import { DebugPanel } from "@/components/DebugPanel";
 import { useCallback, useEffect } from "react";
 import { useAvatarSocket } from "@/hooks/useAvatarSocket";
@@ -82,6 +83,7 @@ export const MainView = () => {
     <main className="call-shell">
       <Stage />
       <ConnectionStatus />
+      <RemoteStatus />
       <PersonaSwitcher onSwitch={handlePersonaSwitch} />
       <TranscriptPanel />
       <ControlsBar onSend={handleSend} onHoldStart={() => void start()} onHoldEnd={stop} />

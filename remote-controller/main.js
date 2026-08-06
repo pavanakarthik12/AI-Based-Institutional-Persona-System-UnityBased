@@ -416,23 +416,27 @@ async function startRecording() {
     };
     
     recorder.onstop = async () => {
+      // Quick validation: check if audio is too short/quiet
       if (state.sentAnyAudio) {
         const recording = new Blob(state.chunks, { type: mimeType || contentType });
         const analysis = await analyzeAudio(recording);
         
         if (analysis && (analysis.duration < MIN_RECORDING_SECONDS || analysis.rms < MIN_RMS)) {
+          // Audio too short/quiet - cancel
           sendJson({ type: 'stt_cancel' });
           showMicError('Could not hear clearly. Hold the button and speak longer.');
           state.micState = 'idle';
+          updateTalkButtonLabel();
         } else {
+          // Audio valid - commit immediately (already set to processing in stopRecording)
           hideMicError();
-          state.micState = 'processing';
           sendJson({ type: 'stt_commit' });
         }
       } else {
         sendJson({ type: 'stt_cancel' });
         showMicError('No audio captured from microphone.');
         state.micState = 'idle';
+        updateTalkButtonLabel();
       }
       
       state.listening = false;
@@ -459,6 +463,14 @@ async function startRecording() {
 
 function stopRecording() {
   if (!state.mediaRecorder || state.mediaRecorder.state === 'inactive') return;
+  
+  // Immediately signal commit to backend for faster response
+  // The onstop handler will still run to validate audio quality
+  if (state.sentAnyAudio) {
+    state.micState = 'processing';
+    updateTalkButtonLabel();
+  }
+  
   state.mediaRecorder.stop();
 }
 
