@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { playAudioBase64 } from "@/lib/audioEngine";
 import { getSocketManager } from "@/lib/socketManager";
+import { wsUrl } from "@/lib/backendUrl";
 import type { VisemeCue } from "@/lib/lipsync";
 
 type SocketMessage = {
@@ -26,7 +27,7 @@ export const useAvatarSocket = () => {
   const setAvatarHints = useAppStore((state) => state.setAvatarHints);
 
   useEffect(() => {
-    const url = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws";
+    const url = wsUrl("/ws");
     const manager = getSocketManager();
     const release = manager.acquire(url);
 

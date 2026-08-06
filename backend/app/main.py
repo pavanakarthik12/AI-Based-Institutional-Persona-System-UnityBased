@@ -8,6 +8,7 @@ from app.api.routes_personas import router as personas_router
 from app.api.routes_stt import router as stt_router
 from app.api.routes_tts import router as tts_router
 from app.api.routes_ws import router as ws_router
+from app.api.routes_ws_remote import router as ws_remote_router
 from app.config import get_settings
 from app.core.logging_config import configure_logging
 
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(tts_router, prefix=settings.api_prefix)
     app.include_router(avatar_router, prefix=settings.api_prefix)
     app.include_router(ws_router, prefix=settings.api_prefix)
+    app.include_router(ws_remote_router, prefix=settings.api_prefix)
     return app
 
 

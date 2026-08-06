@@ -1,3 +1,15 @@
+"""Remote push-to-talk endpoint.
+
+A phone connects here instead of /ws, holds a big button, and streams mic audio the same
+way the laptop does. The turn itself runs through the existing AvatarPipeline — same
+Whisper STT, same LLM, same TTS, same viseme generation — and the results are relayed to
+the connected avatar display(s) in exactly the message shapes /ws already emits, so the
+avatar page does not know (or care) where the audio came from.
+
+This is a dedicated endpoint on purpose: the laptop's /ws protocol and its message flow
+are untouched.
+"""
+
 import json
 import logging
 
@@ -22,20 +34,17 @@ def _default_audio_meta() -> dict:
     }
 
 
-@router.websocket("/ws")
-async def websocket_endpoint(
+@router.websocket("/ws/remote")
+async def remote_websocket_endpoint(
     websocket: WebSocket,
     settings: Settings = Depends(get_app_settings),
     pipeline: AvatarPipeline = Depends(get_pipeline),
 ) -> None:
     await websocket.accept()
-    # This peer renders whatever the remote talker produces; the relay delivers it.
-    relay.register_display(websocket)
     audio_buffer = bytearray()
     audio_meta = _default_audio_meta()
     current_language: str = "auto"
     include_audio: bool = True
-    # One conversation per connection: memory lives as long as the visitor's session.
     conversation = Conversation(persona_id=settings.default_persona)
     stt_provider = create_stt_provider(settings.stt_provider, settings)
 
@@ -45,8 +54,7 @@ async def websocket_endpoint(
     def apply_options(data: dict) -> None:
         nonlocal current_language, include_audio
         if data.get("persona"):
-            # Switching persona clears history so the new persona doesn't inherit
-            # things it never said.
+            # Same persona-switch rule the laptop uses: the new persona starts fresh.
             conversation.switch_persona(data["persona"])
         if data.get("language"):
             current_language = data["language"]
@@ -54,33 +62,43 @@ async def websocket_endpoint(
             include_audio = bool(data["include_audio"])
 
     async def run_turn(message: str) -> None:
-        """Answer one user message: LLM → TTS → transcript, audio + visemes, metadata."""
-        history = conversation.history()
+        """One full remote turn, delivered to the avatar display in the /ws shapes."""
         response = await pipeline.respond(
             message=message,
             persona_id=conversation.persona_id,
             language=current_language,
             include_audio=include_audio,
-            history=history,
+            history=conversation.history(),
         )
         conversation.add("user", message)
         conversation.add("assistant", response["text"])
 
-        await send_json({"type": "transcript", "role": "assistant", "text": response["text"]})
+        await relay.push_to_displays({"type": "transcript", "role": "user", "text": message})
+        await relay.push_to_displays({"type": "transcript", "role": "assistant", "text": response["text"]})
         if response.get("audio_base64"):
-            await send_json(
+            await relay.push_to_displays(
                 {
                     "type": "audio",
                     "audioBase64": response["audio_base64"],
                     "contentType": "audio/mpeg",
-                    # Timed mouth shapes for this exact clip. Empty means the client
-                    # should fall back to amplitude-driven motion.
                     "visemes": response.get("visemes", []),
                 }
             )
-        await send_json(
+        await relay.push_to_displays(
             {
                 "type": "metadata",
+                "persona": response.get("persona"),
+                "emotion": response.get("emotion"),
+                "gesture": response.get("gesture"),
+                "llm_provider": response.get("llm_provider"),
+                "tts_provider": response.get("tts_provider"),
+            }
+        )
+        # Compact echo for the phone's own screen — the avatar never sees this.
+        await send_json(
+            {
+                "type": "response",
+                "text": response["text"],
                 "persona": response.get("persona"),
                 "emotion": response.get("emotion"),
                 "gesture": response.get("gesture"),
@@ -109,15 +127,6 @@ async def websocket_endpoint(
                 continue
 
             msg_type = data.get("type")
-
-            if msg_type == "chat":
-                apply_options(data)
-                try:
-                    await run_turn(data.get("message", ""))
-                except Exception as exc:
-                    logger.exception("chat turn failed")
-                    await send_json({"type": "error", "message": str(exc)})
-                continue
 
             if msg_type == "persona":
                 apply_options(data)
@@ -161,7 +170,6 @@ async def websocket_endpoint(
                     continue
 
                 await send_json({"type": "stt_status", "state": "processing"})
-                logger.info("stt commit: %d bytes", len(audio_buffer))
                 try:
                     result = await stt_provider.transcribe(
                         audio=bytes(audio_buffer),
@@ -170,7 +178,7 @@ async def websocket_endpoint(
                         language=audio_meta["language"],
                     )
                 except Exception as exc:
-                    logger.exception("stt failed")
+                    logger.exception("remote stt failed")
                     await send_json({"type": "stt_status", "state": "error", "message": str(exc)})
                     await send_json({"type": "error", "message": str(exc)})
                     audio_buffer = bytearray()
@@ -187,7 +195,7 @@ async def websocket_endpoint(
                 try:
                     await run_turn(transcript)
                 except Exception as exc:
-                    logger.exception("stt turn failed")
+                    logger.exception("remote stt turn failed")
                     await send_json({"type": "error", "message": str(exc)})
                 await send_json({"type": "stt_status", "state": "complete", "provider": result.provider})
                 continue
@@ -201,14 +209,11 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         return
     except RuntimeError:
-        # Starlette raises this when receive() is called after the peer has gone away.
-        # That is a normal hangup, not a failure.
+        # Normal hangup: receive() after the peer went away.
         return
     except Exception as exc:
-        logger.exception("websocket failed")
+        logger.exception("remote websocket failed")
         try:
             await send_json({"type": "error", "message": str(exc)})
         except RuntimeError:
             pass
-    finally:
-        relay.unregister_display(websocket)

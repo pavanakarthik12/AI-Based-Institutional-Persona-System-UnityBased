@@ -3,12 +3,7 @@
 import { useEffect } from "react";
 import { useGLTF } from "@react-three/drei";
 import { useAppStore, type Persona } from "@/store/useAppStore";
-
-const apiBase = () =>
-  process.env.NEXT_PUBLIC_API_URL ||
-  (process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws")
-    .replace(/^ws/, "http")
-    .replace(/\/ws$/, "");
+import { apiBase } from "@/lib/backendUrl";
 
 /** Loads the persona roster once. The backend owns who exists and which model they use. */
 export const usePersonas = () => {
